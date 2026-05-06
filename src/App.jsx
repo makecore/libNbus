@@ -6,7 +6,7 @@ import {
   routeMeta,
   schedule,
   notesByDate,
-} from "./busData.js";
+} from "./busdata.js";
 
 /*
   중앙도서관 야간운행버스 안내 웹앱
