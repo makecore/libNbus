@@ -201,7 +201,7 @@ export const notesByDate = {};
 // ------------------------------------------------------------
 // 아래만 바꾸면 운행 날짜와 시간이 바뀝니다.
 //
-// daysFromTo(5, 9)  = 5일부터 9일까지
+// daysFromTo(5, 9)   = 5일부터 9일까지
 // daysFromTo(10, 20) = 10일부터 20일까지
 //
 // departures 안의 뜻:
@@ -272,13 +272,15 @@ export const routeMeta = Object.fromEntries(
 );
 
 export const schedule = Object.fromEntries(
-  scheduleRules.flatMap((rule) =>
-    rule.days.map((day) => [
-      makeDate(day),
-      rule.departures.map((departure) => ({
-        time: departure.time,
-        routes: [...departure.routes],
-      })),
-    ])
-  ).sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+  scheduleRules
+    .flatMap((rule) =>
+      rule.days.map((day) => [
+        makeDate(day),
+        rule.departures.map((departure) => ({
+          time: departure.time,
+          routes: [...departure.routes],
+        })),
+      ])
+    )
+    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
 );
