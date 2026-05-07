@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
+
 import {
+  busInfo,
   dayLabels,
-  defaultDate,
+  routeList,
   routes,
   routeMeta,
   schedule,
@@ -10,94 +12,159 @@ import {
 
 /*
   중앙도서관 야간운행버스 안내 웹앱
-  - 모바일 우선 UI
-  - Pretendard 폰트 우선 적용
-  - 외부 JS/CSS 라이브러리 의존성 없음
-  - 날짜/시간/노선 데이터 검증 테스트 포함
+  - 데이터 수정: src/busdata.js
+  - 디자인 수정: 이 파일의 <style> 영역
+  - 모바일, 태블릿, PC 반응형 지원
 */
-
 
 function normalizeText(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, "").trim();
 }
 
+function getServiceDates() {
+  return Object.keys(schedule).sort();
+}
+
+function getServiceStartDate() {
+  const dates = getServiceDates();
+  return dates[0] || busInfo.defaultDate;
+}
+
+function getServiceEndDate() {
+  const dates = getServiceDates();
+  return dates[dates.length - 1] || busInfo.defaultDate;
+}
+
+function getServiceYear() {
+  return Number(getServiceStartDate().slice(0, 4));
+}
+
+function getServiceMonth() {
+  return Number(getServiceStartDate().slice(5, 7));
+}
+
+function getServiceMonthLabel() {
+  return `${getServiceMonth()}월`;
+}
+
+function getDaysInServiceMonth() {
+  return new Date(getServiceYear(), getServiceMonth(), 0).getDate();
+}
+
+function getServicePeriodLabel() {
+  const start = getServiceStartDate();
+  const end = getServiceEndDate();
+
+  const startYear = Number(start.slice(0, 4));
+  const startMonth = Number(start.slice(5, 7));
+  const startDay = Number(start.slice(8, 10));
+
+  const endYear = Number(end.slice(0, 4));
+  const endMonth = Number(end.slice(5, 7));
+  const endDay = Number(end.slice(8, 10));
+
+  if (startYear === endYear && startMonth === endMonth) {
+    return `${startYear}.${startMonth}.${startDay}. - ${endDay}.`;
+  }
+
+  if (startYear === endYear) {
+    return `${startYear}.${startMonth}.${startDay}. - ${endMonth}.${endDay}.`;
+  }
+
+  return `${startYear}.${startMonth}.${startDay}. - ${endYear}.${endMonth}.${endDay}.`;
+}
+
 function toDateString(day) {
-  return `2026-04-${String(day).padStart(2, "0")}`;
+  return `${getServiceYear()}-${String(getServiceMonth()).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 function toKoreanDate(dateString) {
   const date = new Date(`${dateString}T00:00:00`);
-  return `4월 ${date.getDate()}일 ${dayLabels[date.getDay()]}요일`;
+  return `${date.getMonth() + 1}월 ${date.getDate()}일 ${dayLabels[date.getDay()]}요일`;
 }
 
 function toShortDate(dateString) {
   const date = new Date(`${dateString}T00:00:00`);
-  return `${date.getDate()}일(${dayLabels[date.getDay()]})`;
+  return `${date.getMonth() + 1}/${date.getDate()}(${dayLabels[date.getDay()]})`;
 }
 
 function getDefaultDate() {
-  return defaultDate;
+  return schedule[busInfo.defaultDate] ? busInfo.defaultDate : getServiceStartDate();
 }
 
 function getAvailableRoutesByDate(dateString) {
-  return Array.from(new Set((schedule[dateString] || []).flatMap((item) => item.routes))).sort((a, b) => a - b);
+  return Array.from(
+    new Set((schedule[dateString] || []).flatMap((item) => item.routes))
+  ).sort((a, b) => a - b);
 }
 
 function getTimesForRoute(dateString, routeNo) {
-  return (schedule[dateString] || []).filter((item) => item.routes.includes(Number(routeNo)));
+  return (schedule[dateString] || []).filter((item) =>
+    item.routes.includes(Number(routeNo))
+  );
 }
 
 function getServiceSummary(dateString) {
   const items = schedule[dateString] || [];
   if (!items.length) return "운행 정보가 없습니다.";
-  return items.map((item) => `${item.time} · ${item.routes.join("·")}노선`).join(" / ");
+  return items
+    .map((item) => `${item.time} · ${item.routes.join("·")}노선`)
+    .join(" / ");
 }
 
 function runDataTests() {
+  const serviceDates = getServiceDates();
+
   return [
     {
-      name: "운영일은 총 18일이어야 합니다.",
-      pass: Object.keys(schedule).length === 18,
-      detail: `현재 ${Object.keys(schedule).length}일`,
+      name: "운행일이 1일 이상 등록되어 있어야 합니다.",
+      pass: serviceDates.length > 0,
+      detail: `현재 ${serviceDates.length}일`,
     },
     {
-      name: "4월 10일은 12:05에 1·3·5노선만 운행해야 합니다.",
-      pass:
-        schedule["2026-04-10"]?.length === 1 &&
-        schedule["2026-04-10"]?.[0]?.time === "12:05" &&
-        schedule["2026-04-10"]?.[0]?.routes.join(",") === "1,3,5",
-      detail: getServiceSummary("2026-04-10"),
+      name: "기본 선택 날짜가 운행일에 포함되어야 합니다.",
+      pass: Boolean(schedule[busInfo.defaultDate]),
+      detail: `기본 날짜: ${busInfo.defaultDate}`,
     },
     {
-      name: "4월 21일은 12:05, 01:05, 02:05가 있어야 합니다.",
-      pass: (schedule["2026-04-21"] || []).map((item) => item.time).join(",") === "12:05,01:05,02:05",
-      detail: getServiceSummary("2026-04-21"),
-    },
-    {
-      name: "4월 21일 02:05에는 1노선만 운행해야 합니다.",
-      pass: schedule["2026-04-21"]?.find((item) => item.time === "02:05")?.routes.join(",") === "1",
-      detail: "02:05 · 1노선",
-    },
-    {
-      name: "노형로타리는 1노선과 5노선에 포함되어야 합니다.",
-      pass: routes[1].some((stop) => stop.includes("노형로타리")) && routes[5].some((stop) => stop.includes("노형로타리")),
-      detail: "1노선, 5노선",
-    },
-    {
-      name: "탐라도서관은 4노선에 포함되어야 합니다.",
-      pass: routes[4].some((stop) => stop.includes("탐라도서관")),
-      detail: "4노선",
+      name: "모든 운행 노선 번호가 노선 데이터에 존재해야 합니다.",
+      pass: Object.values(schedule).every((items) =>
+        items.every((item) => item.routes.every((routeNo) => Boolean(routes[routeNo])))
+      ),
+      detail: "scheduleRules의 routes 번호와 routeList 비교",
     },
     {
       name: "각 노선의 첫 정류장은 중앙도서관이어야 합니다.",
       pass: Object.values(routes).every((stops) => stops[0] === "중앙도서관"),
       detail: "전체 노선 출발지 확인",
     },
+    {
+      name: "각 운행일에는 출발 시간이 1개 이상 있어야 합니다.",
+      pass: Object.values(schedule).every((items) => items.length > 0),
+      detail: "날짜별 출발 시간 확인",
+    },
   ];
 }
 
 function DateScroller({ selectedDate, setSelectedDate }) {
-  const serviceDates = Object.keys(schedule).sort();
+  const serviceDates = getServiceDates();
+  const scrollRef = useRef(null);
+
+  function moveDateScroll(direction) {
+    scrollRef.current?.scrollBy({ left: direction * 320, behavior: "smooth" });
+  }
+
+  function handleDateWheel(event) {
+    if (!scrollRef.current) return;
+
+    const delta =
+      Math.abs(event.deltaX) > Math.abs(event.deltaY)
+        ? event.deltaX
+        : event.deltaY;
+
+    scrollRef.current.scrollLeft += delta;
+    event.preventDefault();
+  }
 
   return (
     <section className="date-strip" aria-label="운행일 빠른 선택">
@@ -107,25 +174,51 @@ function DateScroller({ selectedDate, setSelectedDate }) {
           <h2>날짜 선택</h2>
         </div>
       </div>
-      <div className="date-scroll">
-        {serviceDates.map((dateString) => {
-          const selected = selectedDate === dateString;
-          const day = Number(dateString.slice(-2));
-          const dayIndex = new Date(`${dateString}T00:00:00`).getDay();
-          return (
-            <button
-              key={dateString}
-              type="button"
-              onClick={() => setSelectedDate(dateString)}
-              className={`date-pill ${selected ? "selected" : ""}`}
-              aria-label={`${toKoreanDate(dateString)} 선택`}
-            >
-              <span className={`date-week ${dayIndex === 0 ? "sun" : dayIndex === 6 ? "sat" : ""}`}>{dayLabels[dayIndex]}</span>
-              <strong>{day}</strong>
-              {notesByDate[dateString] ? <em>{notesByDate[dateString]}</em> : null}
-            </button>
-          );
-        })}
+
+      <div className="date-scroll-wrap">
+        <button
+          type="button"
+          className="date-arrow"
+          onClick={() => moveDateScroll(-1)}
+          aria-label="이전 날짜 보기"
+        >
+          ‹
+        </button>
+
+        <div className="date-scroll" ref={scrollRef} onWheel={handleDateWheel}>
+          {serviceDates.map((dateString) => {
+            const selected = selectedDate === dateString;
+            const day = Number(dateString.slice(-2));
+            const dayIndex = new Date(`${dateString}T00:00:00`).getDay();
+
+            return (
+              <button
+                key={dateString}
+                type="button"
+                onClick={() => setSelectedDate(dateString)}
+                className={`date-pill ${selected ? "selected" : ""}`}
+                aria-label={`${toKoreanDate(dateString)} 선택`}
+              >
+                <span
+                  className={`date-week ${dayIndex === 0 ? "sun" : dayIndex === 6 ? "sat" : ""}`}
+                >
+                  {dayLabels[dayIndex]}
+                </span>
+                <strong>{day}</strong>
+                {notesByDate[dateString] ? <em>{notesByDate[dateString]}</em> : null}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          className="date-arrow"
+          onClick={() => moveDateScroll(1)}
+          aria-label="다음 날짜 보기"
+        >
+          ›
+        </button>
       </div>
     </section>
   );
@@ -133,23 +226,41 @@ function DateScroller({ selectedDate, setSelectedDate }) {
 
 function MonthMiniCalendar({ selectedDate, setSelectedDate }) {
   const [isOpen, setIsOpen] = useState(false);
-  const days = Array.from({ length: 30 }, (_, index) => index + 1);
-  const leadingBlankCount = 3;
+  const days = Array.from({ length: getDaysInServiceMonth() }, (_, index) => index + 1);
+  const leadingBlankCount = new Date(
+    `${getServiceYear()}-${String(getServiceMonth()).padStart(2, "0")}-01T00:00:00`
+  ).getDay();
 
   return (
-    <details className="month-calendar" open={isOpen} onToggle={(event) => setIsOpen(event.currentTarget.open)}>
-      <summary>{isOpen ? "4월 전체 달력 닫기" : "4월 전체 달력 열기"}</summary>
+    <details
+      className="month-calendar"
+      open={isOpen}
+      onToggle={(event) => setIsOpen(event.currentTarget.open)}
+    >
+      <summary>
+        {isOpen
+          ? `${getServiceMonthLabel()} 전체 달력 닫기`
+          : `${getServiceMonthLabel()} 전체 달력 열기`}
+      </summary>
+
       <div className="weekday-grid">
         {dayLabels.map((day, index) => (
-          <div key={day} className={index === 0 ? "sun" : index === 6 ? "sat" : ""}>{day}</div>
+          <div key={day} className={index === 0 ? "sun" : index === 6 ? "sat" : ""}>
+            {day}
+          </div>
         ))}
       </div>
+
       <div className="calendar-grid">
-        {Array.from({ length: leadingBlankCount }).map((_, index) => <div key={`blank-${index}`} />)}
+        {Array.from({ length: leadingBlankCount }).map((_, index) => (
+          <div key={`blank-${index}`} />
+        ))}
+
         {days.map((day) => {
           const dateString = toDateString(day);
           const hasService = Boolean(schedule[dateString]);
           const selected = selectedDate === dateString;
+
           return (
             <button
               key={dateString}
@@ -163,6 +274,7 @@ function MonthMiniCalendar({ selectedDate, setSelectedDate }) {
           );
         })}
       </div>
+
       <div className="calendar-legend">
         <span><i className="legend-service" />운행일</span>
         <span><i className="legend-selected" />선택일</span>
@@ -179,16 +291,25 @@ function SearchBox({ stopQuery, setStopQuery, routeSearchResults, setSelectedRou
         <input
           value={stopQuery}
           onChange={(event) => setStopQuery(event.target.value)}
-          placeholder="정류장 검색  예: 노형, 터미널"
+          placeholder={busInfo.searchPlaceholder}
         />
-        {stopQuery ? <button type="button" onClick={() => setStopQuery("")} aria-label="검색어 지우기">×</button> : null}
+        {stopQuery ? (
+          <button type="button" onClick={() => setStopQuery("")} aria-label="검색어 지우기">
+            ×
+          </button>
+        ) : null}
       </label>
 
       {normalizeText(stopQuery) ? (
         <div className="search-results">
           {routeSearchResults.length ? (
             routeSearchResults.map((item) => (
-              <button key={item.routeNo} type="button" className="search-result" onClick={() => setSelectedRoute(String(item.routeNo))}>
+              <button
+                key={item.routeNo}
+                type="button"
+                className="search-result"
+                onClick={() => setSelectedRoute(String(item.routeNo))}
+              >
                 <strong>{item.routeNo}노선</strong>
                 <span>{item.stops.join(", ")}</span>
               </button>
@@ -202,32 +323,48 @@ function SearchBox({ stopQuery, setStopQuery, routeSearchResults, setSelectedRou
   );
 }
 
-function TodaySummary({ selectedDate, selectedRoute, setSelectedRoute, visibleTimes, availableRoutes }) {
+function TodaySummary({
+  selectedDate,
+  selectedRoute,
+  setSelectedRoute,
+  visibleTimes,
+  availableRoutes,
+}) {
   return (
     <section className="summary-card" aria-label="선택 날짜 운행 요약">
       <div className="summary-top">
         <div>
           <p className="eyebrow">오늘 선택</p>
           <h1>{toShortDate(selectedDate)}</h1>
-          {notesByDate[selectedDate] ? <span className="note-chip">{notesByDate[selectedDate]}</span> : null}
+          {notesByDate[selectedDate] ? (
+            <span className="note-chip">{notesByDate[selectedDate]}</span>
+          ) : null}
         </div>
+
         <div className="boarding-point">
           <span>탑승</span>
-          <strong>중앙도서관<br />정문 앞</strong>
+          <strong>{busInfo.boardingPlace}</strong>
         </div>
       </div>
 
       <div className="route-tabs" aria-label="노선 선택">
-        <button type="button" onClick={() => setSelectedRoute("all")} className={selectedRoute === "all" ? "active" : ""}>전체</button>
-        {[1, 2, 3, 4, 5].map((routeNo) => (
+        <button
+          type="button"
+          onClick={() => setSelectedRoute("all")}
+          className={selectedRoute === "all" ? "active" : ""}
+        >
+          모든 노선
+        </button>
+
+        {routeList.map((route) => (
           <button
-            key={routeNo}
+            key={route.id}
             type="button"
-            disabled={!availableRoutes.includes(routeNo)}
-            onClick={() => setSelectedRoute(String(routeNo))}
-            className={selectedRoute === String(routeNo) ? "active" : ""}
+            disabled={!availableRoutes.includes(route.id)}
+            onClick={() => setSelectedRoute(String(route.id))}
+            className={selectedRoute === String(route.id) ? "active" : ""}
           >
-            {routeNo}
+            {route.id}노선
           </button>
         ))}
       </div>
@@ -240,8 +377,11 @@ function TodaySummary({ selectedDate, selectedRoute, setSelectedRoute, visibleTi
                 <p>출발</p>
                 <strong>{item.time}</strong>
               </div>
+
               <div className="time-route-chips">
-                {item.routes.map((routeNo) => <span key={routeNo}>{routeNo}노선</span>)}
+                {item.routes.map((routeNo) => (
+                  <span key={routeNo}>{routeNo}노선</span>
+                ))}
               </div>
             </article>
           ))
@@ -260,16 +400,17 @@ function RouteDetail({ selectedRoute, selectedDate, setSelectedRoute, availableR
         <p className="eyebrow">정류장 순서</p>
         <h2>도착 방면을 선택해 주세요.</h2>
         <p>아래 버튼을 누르면 해당 노선의 정류장 순서를 바로 보여드립니다.</p>
+
         <div className="route-choice-grid" aria-label="정류장 순서를 볼 노선 선택">
-          {[1, 2, 3, 4, 5].map((routeNo) => (
+          {routeList.map((route) => (
             <button
-              key={routeNo}
+              key={route.id}
               type="button"
-              disabled={!availableRoutes.includes(routeNo)}
-              onClick={() => setSelectedRoute(String(routeNo))}
+              disabled={!availableRoutes.includes(route.id)}
+              onClick={() => setSelectedRoute(String(route.id))}
             >
-              <strong>{routeNo}노선</strong>
-              <span>{routeMeta[routeNo].cta}</span>
+              <strong>{route.id}노선</strong>
+              <span>{route.cta}</span>
             </button>
           ))}
         </div>
@@ -285,10 +426,13 @@ function RouteDetail({ selectedRoute, selectedDate, setSelectedRoute, availableR
     <section className="route-card" aria-label={`${routeNo}노선 정류장 목록`}>
       <div className="route-head">
         <div>
-          <p className="eyebrow">{routeNo}노선 · {routeMeta[routeNo].short} 방면</p>
+          <p className="eyebrow">
+            {routeNo}노선 · {routeMeta[routeNo].short} 방면
+          </p>
           <h2>{routeMeta[routeNo].terminal}</h2>
           <p>{routeMeta[routeNo].area}</p>
         </div>
+
         <div className="route-time-mini">
           <span>출발</span>
           <strong>{times.length ? times.map((item) => item.time).join(" · ") : "없음"}</strong>
@@ -313,7 +457,10 @@ function TestPanel({ tests }) {
 
   return (
     <details className="test-panel">
-      <summary>데이터 검증 · {failedCount ? `${failedCount}개 확인 필요` : `${passedCount}/${tests.length} 통과`}</summary>
+      <summary>
+        데이터 검증 · {failedCount ? `${failedCount}개 확인 필요` : `${passedCount}/${tests.length} 통과`}
+      </summary>
+
       <div>
         {tests.map((test) => (
           <p key={test.name} className={test.pass ? "pass" : "fail"}>
@@ -339,19 +486,23 @@ export default function LibraryNightBusApp() {
     const query = normalizeText(stopQuery);
     if (!query) return [];
 
-    return Object.entries(routes)
-      .map(([routeNo, stops]) => ({
-        routeNo: Number(routeNo),
-        stops: stops.filter((stop) => normalizeText(stop).includes(query)),
+    return routeList
+      .map((route) => ({
+        routeNo: route.id,
+        stops: route.stops.filter((stop) => normalizeText(stop).includes(query)),
       }))
       .filter((item) => item.stops.length > 0);
   }, [stopQuery]);
 
   const visibleTimes = useMemo(() => {
     if (selectedRoute === "all") return selectedDaySchedule;
+
     return selectedDaySchedule
       .filter((item) => item.routes.includes(Number(selectedRoute)))
-      .map((item) => ({ ...item, routes: item.routes.filter((routeNo) => routeNo === Number(selectedRoute)) }));
+      .map((item) => ({
+        ...item,
+        routes: item.routes.filter((routeNo) => routeNo === Number(selectedRoute)),
+      }));
   }, [selectedDate, selectedRoute, selectedDaySchedule]);
 
   return (
@@ -434,8 +585,20 @@ export default function LibraryNightBusApp() {
           font-weight: 700;
         }
 
-        .top-reset:active, .date-pill:active, .route-tabs button:active, .search-result:active { transform: scale(.96); }
-        .top-reset:focus-visible, .date-pill:focus-visible, .route-tabs button:focus-visible, .calendar-day:focus-visible, .search-box:focus-within {
+        .top-reset:active,
+        .date-pill:active,
+        .date-arrow:active,
+        .route-tabs button:active,
+        .search-result:active {
+          transform: scale(.96);
+        }
+
+        .top-reset:focus-visible,
+        .date-pill:focus-visible,
+        .date-arrow:focus-visible,
+        .route-tabs button:focus-visible,
+        .calendar-day:focus-visible,
+        .search-box:focus-within {
           outline: 2px solid var(--blue-press);
           outline-offset: 2px;
         }
@@ -511,7 +674,7 @@ export default function LibraryNightBusApp() {
         }
 
         .date-strip::after {
-          content: "옆으로 밀어 날짜를 더 볼 수 있어요";
+          content: "마우스 휠, 좌우 버튼, 손가락 밀기로 날짜를 이동할 수 있어요";
           display: block;
           margin-top: -2px;
           color: var(--muted);
@@ -544,14 +707,25 @@ export default function LibraryNightBusApp() {
           font-weight: 900;
         }
 
-        .count-badge {
+        .date-scroll-wrap {
+          position: relative;
+          display: grid;
+          grid-template-columns: 34px minmax(0, 1fr) 34px;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .date-arrow {
+          width: 34px;
+          height: 54px;
+          border: 1px solid var(--line);
           border-radius: 999px;
-          background: var(--dark);
-          color: #fff;
-          padding: 6px 10px;
-          font-size: 12px;
-          font-weight: 800;
-          white-space: nowrap;
+          background: #fff;
+          color: var(--blue);
+          font-size: 28px;
+          font-weight: 900;
+          line-height: 1;
+          box-shadow: var(--shadow);
         }
 
         .date-scroll {
@@ -561,6 +735,7 @@ export default function LibraryNightBusApp() {
           overflow-y: hidden;
           width: 100%;
           max-width: 100%;
+          min-width: 0;
           padding: 2px 0 10px;
           scroll-snap-type: x proximity;
           -webkit-overflow-scrolling: touch;
@@ -571,7 +746,6 @@ export default function LibraryNightBusApp() {
         }
 
         .date-scroll::-webkit-scrollbar { height: 6px; }
-
         .date-scroll::-webkit-scrollbar-track { background: transparent; }
 
         .date-scroll::-webkit-scrollbar-thumb {
@@ -627,8 +801,11 @@ export default function LibraryNightBusApp() {
           box-shadow: 0 8px 22px rgba(0,102,204,.28);
         }
 
-        .date-pill.selected .date-week { color: rgba(255,255,255,.82); }
-        .date-pill.selected .date-week.sun, .date-pill.selected .date-week.sat { color: rgba(255,255,255,.82); }
+        .date-pill.selected .date-week,
+        .date-pill.selected .date-week.sun,
+        .date-pill.selected .date-week.sat {
+          color: rgba(255,255,255,.82);
+        }
 
         .month-calendar {
           margin-top: 4px;
@@ -648,6 +825,7 @@ export default function LibraryNightBusApp() {
         }
 
         .month-calendar summary::-webkit-details-marker { display: none; }
+
         .weekday-grid, .calendar-grid {
           display: grid;
           grid-template-columns: repeat(7, 1fr);
@@ -704,9 +882,7 @@ export default function LibraryNightBusApp() {
         .legend-service { background: #eaf1ff; border: 1px solid #a9c4ff; }
         .legend-selected { background: var(--blue); }
 
-        .search-section {
-          margin-top: 12px;
-        }
+        .search-section { margin-top: 12px; }
 
         .search-box {
           height: 50px;
@@ -819,7 +995,8 @@ export default function LibraryNightBusApp() {
         }
 
         .boarding-point {
-          min-width: 104px;
+          min-width: 112px;
+          max-width: 128px;
           border-radius: 18px;
           background: var(--dark);
           color: #fff;
@@ -840,6 +1017,7 @@ export default function LibraryNightBusApp() {
           font-size: 14px;
           font-weight: 900;
           line-height: 1.2;
+          word-break: keep-all;
         }
 
         .route-tabs {
@@ -861,6 +1039,7 @@ export default function LibraryNightBusApp() {
           border: 1px solid var(--line);
           background: #fff;
           color: var(--ink);
+          padding: 0 13px;
           font-size: 14px;
           font-weight: 900;
         }
@@ -934,7 +1113,10 @@ export default function LibraryNightBusApp() {
           box-shadow: none;
         }
 
-        .route-card.placeholder .eyebrow, .route-card.placeholder p { color: rgba(255,255,255,.66); }
+        .route-card.placeholder .eyebrow,
+        .route-card.placeholder p {
+          color: rgba(255,255,255,.66);
+        }
 
         .route-choice-grid {
           margin-top: 14px;
@@ -958,13 +1140,8 @@ export default function LibraryNightBusApp() {
           text-align: left;
         }
 
-        .route-choice-grid button:disabled {
-          opacity: .35;
-        }
-
-        .route-choice-grid button:active {
-          transform: scale(.98);
-        }
+        .route-choice-grid button:disabled { opacity: .35; }
+        .route-choice-grid button:active { transform: scale(.98); }
 
         .route-choice-grid button strong {
           font-size: 17px;
@@ -1121,13 +1298,9 @@ export default function LibraryNightBusApp() {
         .test-panel .fail strong { color: var(--red); }
 
         @media (max-width: 380px) {
-          .time-card {
-            grid-template-columns: 1fr;
-          }
-
-          .time-route-chips {
-            justify-content: flex-start;
-          }
+          .time-card { grid-template-columns: 1fr; }
+          .time-route-chips { justify-content: flex-start; }
+          .boarding-point { min-width: 104px; }
         }
 
         @media (min-width: 760px) {
@@ -1148,10 +1321,6 @@ export default function LibraryNightBusApp() {
 
           .hero h1 {
             max-width: 720px;
-          }
-
-          .date-strip::after {
-            display: block;
           }
 
           .date-pill {
@@ -1250,9 +1419,10 @@ export default function LibraryNightBusApp() {
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
-            <strong>중앙도서관 야간버스</strong>
-            <span>2026.4.10. - 4.27. · 중앙도서관 정문 앞 탑승</span>
+            <strong>{busInfo.title}</strong>
+            <span>{getServicePeriodLabel()} · {busInfo.boardingPlace} 탑승</span>
           </div>
+
           <button
             type="button"
             className="top-reset"
@@ -1269,13 +1439,15 @@ export default function LibraryNightBusApp() {
 
       <div className="container">
         <section className="hero">
-          <span className="hero-kicker">중간고사 기간 한정 운행</span>
-          <h1>공부를 마친 밤,<br />귀가길은 더 편하게.</h1>
-          <p>오늘 운행하는 시간과 노선을 빠르게 확인하세요.</p>
+          <span className="hero-kicker">{busInfo.eventLabel}</span>
+          <h1>{busInfo.heroTitleLine1}<br />{busInfo.heroTitleLine2}</h1>
+          <p>{busInfo.heroDescription}</p>
         </section>
 
         <DateScroller selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
+
         <MonthMiniCalendar selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
+
         <SearchBox
           stopQuery={stopQuery}
           setStopQuery={setStopQuery}
@@ -1291,6 +1463,7 @@ export default function LibraryNightBusApp() {
             visibleTimes={visibleTimes}
             availableRoutes={availableRoutes}
           />
+
           <RouteDetail
             selectedRoute={selectedRoute}
             selectedDate={selectedDate}
@@ -1299,7 +1472,10 @@ export default function LibraryNightBusApp() {
           />
         </div>
 
-        <p className="guide">탑승 위치는 중앙도서관 정문 앞입니다. 출발 시간은 중앙도서관 기준이며, 교통 상황에 따라 정류장 도착 시간은 달라질 수 있습니다.</p>
+        <p className="guide">
+          탑승 위치는 {busInfo.boardingPlace}입니다. 출발 시간은 중앙도서관 기준이며,
+          교통 상황에 따라 정류장 도착 시간은 달라질 수 있습니다.
+        </p>
       </div>
 
       <TestPanel tests={tests} />
