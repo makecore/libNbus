@@ -16,7 +16,7 @@ export const dayLabels = ["일", "월", "화", "수", "목", "금", "토"];
 // 1. 기본 안내 정보
 // ------------------------------------------------------------
 export const busInfo = {
-  title: "중앙도서관 야간버스",
+  title: "제주대학교 중앙도서관 야간버스",
   eventLabel: "시험기간 한정 운행",
 
   // 운영 월이 바뀌면 아래 2개를 바꾸세요.
@@ -25,7 +25,7 @@ export const busInfo = {
 
   // 웹앱을 처음 열었을 때 선택되어 있을 날짜입니다.
   // 반드시 아래 scheduleRules에 포함된 날짜로 적어야 합니다.
-  defaultDate: "2026-06-16",
+  defaultDate: "2026-06-15",
 
   // 상단과 안내문에 표시되는 탑승 위치입니다.
   boardingPlace: "중앙도서관 정문 앞",
@@ -230,8 +230,8 @@ export const scheduleRules = [
   {
     name: "단축 운행",
     days: [
-      ...daysFromTo(5, 9),
-      ...daysFromTo(21, 23),
+      ...daysFromTo(4, 12),
+      ...daysFromTo(23, 23),
     ],
     departures: [
       { time: "12:05", routes: [1, 3, 5] },
@@ -240,7 +240,7 @@ export const scheduleRules = [
 
   {
     name: "전체 운행",
-    days: daysFromTo(10, 20),
+    days: daysFromTo(13, 22),
     departures: [
       { time: "12:05", routes: [1, 2, 3, 4, 5] },
       { time: "01:05", routes: [2, 4] },
