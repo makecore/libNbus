@@ -234,7 +234,7 @@ export const scheduleRules = [
       ...daysFromTo(23, 23),
     ],
     departures: [
-      { time: "12:05", routes: [1, 3, 5] },
+      { time: "00:05", routes: [1, 3, 5] },
     ],
   },
 
@@ -242,7 +242,7 @@ export const scheduleRules = [
     name: "전체 운행",
     days: daysFromTo(13, 22),
     departures: [
-      { time: "12:05", routes: [1, 2, 3, 4, 5] },
+      { time: "00:05", routes: [1, 2, 3, 4, 5] },
       { time: "01:05", routes: [2, 4] },
       { time: "02:05", routes: [1] },
     ],
